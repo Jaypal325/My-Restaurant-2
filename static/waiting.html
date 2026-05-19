@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waiting for Approval — Restaurant Control Desk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/styles.css">
+<style>
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.wait-card {
+  width: min(440px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 32px 24px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.wait-icon {
+  font-size: 44px;
+  margin-bottom: 16px;
+  display: block;
+}
+.wait-card h2 {
+  font-size: 20px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.wait-card p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.email-badge {
+  display: inline-block;
+  background: #ebe7df;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 20px;
+}
+.dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce 1.4s ease-in-out infinite;
+}
+.dot:nth-child(2) { animation-delay: .2s; }
+.dot:nth-child(3) { animation-delay: .4s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: .4; }
+  40% { transform: translateY(-8px); opacity: 1; }
+}
+.status-line {
+  background: #f7f3ec;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.status-line strong { color: var(--accent); }
+.revoked-box {
+  display: none;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.revoked-box h3 { color: #b91c1c; font-size: 14px; margin-bottom: 4px; }
+.revoked-box p { color: #7f1d1d; font-size: 13px; margin: 0; }
+.btn-logout {
+  background: #ebe7df;
+  color: var(--ink);
+  font-weight: 700;
+  border: 0;
+}
+</style>
+</head>
+<body>
+<div class="wait-card">
+  <span class="wait-icon">⏳</span>
+  <h2>Waiting for Approval</h2>
+  <p>Your account has been submitted.<br>The admin will review and approve your access.</p>
+  <div class="email-badge">📧 <span id="emailDisplay">Loading...</span></div>
+  <div class="dots">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+  <div class="revoked-box" id="revokedBox">
+    <h3>🚫 Access Revoked</h3>
+    <p>Your access has been revoked by the admin. Please contact them for assistance.</p>
+  </div>
+  <div class="status-line">
+    Checking every 10 seconds — <strong id="statusText">Waiting</strong>
+  </div>
+  <button class="btn-logout" onclick="logout()">Sign Out</button>
+</div>
+
+<script>
+async function checkStatus() {
+  try {
+    const res = await fetch('/api/auth/status');
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    const data = await res.json();
+    document.getElementById('emailDisplay').textContent = data.email || '';
+    if (data.status === 'approved') {
+      document.getElementById('statusText').textContent = '✅ Approved! Redirecting...';
+      setTimeout(() => window.location.href = '/', 800);
+    } else if (data.status === 'revoked') {
+      document.getElementById('statusText').textContent = '🚫 Access Revoked';
+      document.getElementById('revokedBox').style.display = 'block';
+    }
+  } catch (e) {}
+}
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+checkStatus();
+setInterval(checkStatus, 10000);
+</script>
+</body>
+</html>

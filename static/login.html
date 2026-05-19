@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Restaurant Control Desk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/styles.css">
+<style>
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.login-wrap {
+  width: min(420px, calc(100vw - 32px));
+}
+.login-brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.login-brand .eyebrow {
+  display: block;
+  color: var(--accent-2);
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  margin-bottom: 6px;
+  position: static;
+  max-height: none;
+  opacity: 1;
+  transform: none;
+}
+.login-brand h2 {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--ink);
+  margin: 0;
+}
+.login-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.login-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.login-tabs button {
+  flex: 1;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  min-height: 38px;
+  padding: 8px;
+}
+.login-tabs button.active {
+  background: var(--ink);
+  color: white;
+  border-color: var(--ink);
+}
+.field-group {
+  margin-bottom: 14px;
+}
+.field-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.field-group input {
+  width: 100%;
+}
+.submit-btn {
+  width: 100%;
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.msg {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  display: none;
+}
+.msg.error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+}
+.msg.success {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #15803d;
+}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-brand">
+    <span class="eyebrow">Restaurant Control Desk</span>
+    <h2>My Restaurant</h2>
+  </div>
+  <div class="login-card">
+    <div class="login-tabs">
+      <button id="tabLogin" class="active" onclick="switchTab('login')">Sign In</button>
+      <button id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+    <div class="field-group">
+      <label>Email Address</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" autocomplete="current-password">
+    </div>
+    <button class="submit-btn" id="submitBtn" onclick="submit()">Sign In</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+
+<script>
+let mode = 'login';
+
+function switchTab(m) {
+  mode = m;
+  document.getElementById('tabLogin').classList.toggle('active', m === 'login');
+  document.getElementById('tabSignup').classList.toggle('active', m === 'signup');
+  document.getElementById('submitBtn').textContent = m === 'login' ? 'Sign In' : 'Create Account';
+  document.getElementById('password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+  showMsg('', '');
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = text ? 'block' : 'none';
+}
+
+async function submit() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  if (!email || !password) { showMsg('Please fill in all fields.', 'error'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Please wait...';
+
+  try {
+    const url = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showMsg(data.error || 'Something went wrong.', 'error'); return; }
+    if (data.role === 'admin' || data.status === 'approved') {
+      showMsg('Welcome! Redirecting...', 'success');
+      setTimeout(() => window.location.href = data.redirect || '/', 500);
+    } else {
+      showMsg('Account pending admin approval.', 'success');
+      setTimeout(() => window.location.href = '/waiting', 700);
+    }
+  } catch (e) {
+    showMsg('Network error. Try again.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = mode === 'login' ? 'Sign In' : 'Create Account';
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+</script>
+</body>
+</html>

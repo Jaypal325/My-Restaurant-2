@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Restaurant Control Desk</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar" id="topbar">
+      <div class="brand-block">
+        <p class="eyebrow">Restaurant Control Desk</p>
+        <div id="storeNameBtn" class="store-name">My Restaurant</div>
+      </div>
+      <div class="top-actions">
+        <button id="notificationBtn" class="icon-btn ghost badge-btn" type="button" aria-label="Notifications">
+          &#128276;<span id="notificationBadge" class="badge hidden">0</span>
+        </button>
+        <button id="globalSettingsBtn" class="icon-btn ghost" type="button" aria-label="Settings">&#9881;</button>
+      </div>
+    </header>
+
+    <main>
+      <nav class="tabs" aria-label="App tabs">
+        <button class="active" data-tab="calculator">Calculator</button>
+        <button data-tab="udhari">Udhari</button>
+        <button data-tab="stock">Stock</button>
+        <button data-tab="tables">Table Billing</button>
+        <button data-tab="profit">Profit</button>
+        <button data-tab="fields">Custom Fields</button>
+      </nav>
+
+      <section id="calculator" class="tab-panel active">
+        <div class="two-col">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>My Calculator</h2>
+              <div class="head-actions">
+                <button id="productMenuBtn" class="icon-btn" type="button" aria-label="Calculator settings">&#9881;</button>
+              </div>
+            </div>
+            <div class="calc-screen">
+              <button class="ghost clear-bill-btn" type="button">Clear</button>
+              <div class="calc-info">
+                <div class="calc-label">Total Amount</div>
+                <div id="calcTotal" class="calc-amount">Rs 0</div>
+              </div>
+            </div>
+            <div id="productGrid" class="product-grid"></div>
+          </section>
+          <section class="panel bill-panel">
+            <div class="panel-head">
+              <h2>Current Bill</h2>
+              <button class="ghost clear-bill-btn" type="button">Clear</button>
+            </div>
+            <div id="billItems" class="bill-list empty">No items yet</div>
+            <div class="bill-total-row">
+              <strong>Total</strong>
+              <strong id="billPanelTotal">Rs 0</strong>
+            </div>
+            <form id="checkoutForm" class="checkout">
+              <select name="payment_status">
+                <option value="paid">Paid</option>
+                <option value="udhari">Udhari</option>
+              </select>
+              <select name="payment_method" id="calcMethod"></select>
+              <input name="customer_name" placeholder="Customer name for udhari" />
+              <input name="reminder_at" type="datetime-local" />
+              <button type="submit">Save bill</button>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section id="udhari" class="tab-panel">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Pending Udhari</h2>
+              <div class="subtle">Total: <span id="udhariTotal" class="total">Rs 0</span></div>
+            </div>
+            <div class="head-actions">
+              <button id="openCustomerModal" type="button">Add person</button>
+            </div>
+          </div>
+          <div id="customers" class="rows"></div>
+        </section>
+      </section>
+
+      <section id="stock" class="tab-panel">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Purchase History</h2>
+            <button id="openStockModal" type="button">Add purchase</button>
+          </div>
+          <div id="stockRows" class="rows"></div>
+        </section>
+      </section>
+
+      <section id="tables" class="tab-panel">
+        <div class="layout-shell">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Restaurant Outline</h2>
+              <div class="head-actions">
+                <button id="editTables" type="button">Edit tables</button>
+                <button id="doneTables" class="ghost hidden" type="button">Done</button>
+              </div>
+            </div>
+            <form id="tableEditor" class="table-editor hidden">
+              <input name="label" placeholder="Table name" required />
+              <input name="seats" type="number" min="1" placeholder="Seats" required />
+              <button type="submit">Save table</button>
+              <button id="addTable" class="ghost" type="button">Add table</button>
+            </form>
+            <div id="floor" class="floor"></div>
+          </section>
+          <section class="panel bill-panel">
+            <div class="panel-head">
+              <h2 id="tableTitle">Select a table</h2>
+              <span id="tableTotal" class="total">Rs 0</span>
+            </div>
+            <div id="tableSwitcher" class="table-switcher hidden"></div>
+            <div id="tableBillItems" class="bill-list empty">No table selected</div>
+            <form id="tableCheckoutForm" class="checkout">
+              <select name="payment_status">
+                <option value="paid">Paid</option>
+                <option value="udhari">Udhari</option>
+              </select>
+              <select name="payment_method" id="tableMethod"></select>
+              <input name="customer_name" placeholder="Customer name for udhari" />
+              <input name="reminder_at" type="datetime-local" />
+              <button type="submit">Close table bill</button>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section id="profit" class="tab-panel">
+        <section class="stats" id="stats"></section>
+        <div class="two-col">
+          <section class="panel">
+            <h2>Current Amounts</h2>
+            <div id="accounts" class="account-grid"></div>
+            <form id="accountForm" class="inline-form">
+              <input name="name" placeholder="Cash / Online / Bank / Wallet" required />
+              <input name="opening_amount" type="number" step="0.01" placeholder="Current amount" />
+              <button type="submit">Add field</button>
+            </form>
+          </section>
+          <section class="panel">
+            <h2>Other Income / Expense</h2>
+            <form id="transactionForm" class="stack-form">
+              <input name="title" placeholder="Title" required />
+              <div class="grid-2">
+                <select name="kind">
+                  <option value="income">Income</option>
+                  <option value="expense">Expense</option>
+                </select>
+                <select name="account_id" id="transactionAccount"></select>
+              </div>
+              <input name="amount" type="number" step="0.01" min="0" placeholder="Amount" required />
+              <div class="extra-fields" data-area="transaction"></div>
+              <button type="submit">Add to profit</button>
+            </form>
+          </section>
+        </div>
+        <section class="panel wide">
+          <h2>Profit Ledger</h2>
+          <div id="transactions" class="rows"></div>
+        </section>
+      </section>
+
+      <section id="fields" class="tab-panel">
+        <section class="panel wide">
+          <h2>Add Your Own Fields</h2>
+          <form id="fieldForm" class="inline-form">
+            <select name="area">
+              <option value="customer">Udhari person</option>
+              <option value="stock">Stock purchase</option>
+              <option value="transaction">Profit entry</option>
+              <option value="sale">Bill</option>
+            </select>
+            <input name="name" placeholder="Field name: GST, note, waiter" required />
+            <select name="field_type">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+            </select>
+            <button type="submit">Add field</button>
+          </form>
+          <div id="fieldRows" class="field-rows"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="productModal" class="modal">
+      <form id="productForm" class="stack-form modal-card">
+        <div class="panel-head">
+          <h2>Calculator Settings</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <h3 id="productModalTitle">Add Button</h3>
+        <input name="id" type="hidden" />
+        <input name="name" placeholder="Button name: Chai" required />
+        <input name="price" type="number" step="0.01" min="0" placeholder="Price" required />
+        <input name="color" type="hidden" value="#176b87" />
+        <div id="productColorChoices" class="color-choices"></div>
+        <div class="modal-actions">
+          <button type="submit">Save button</button>
+          <button id="cancelProductEdit" class="ghost hidden" type="button">Cancel edit</button>
+        </div>
+        <div class="manager-list" id="productManagerList"></div>
+      </form>
+    </dialog>
+
+    <dialog id="customerModal" class="modal">
+      <form id="customerForm" class="stack-form modal-card">
+        <div class="panel-head">
+          <h2>Add Udhari Person</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <input name="name" placeholder="Person name" required />
+        <input name="phone" placeholder="Phone" />
+        <input name="amount" type="number" step="0.01" min="0" placeholder="Current udhari amount" />
+        <input name="reminder_at" type="datetime-local" />
+        <textarea name="notes" placeholder="Notes"></textarea>
+        <div class="extra-fields" data-area="customer"></div>
+        <button type="submit">Add person</button>
+      </form>
+    </dialog>
+
+    <dialog id="stockModal" class="modal">
+      <form id="stockForm" class="stack-form modal-card">
+        <div class="panel-head">
+          <h2>Add Stock Purchase</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <input name="item_name" placeholder="Item purchased: Milk, tea powder" required />
+        <div class="grid-2">
+          <input name="quantity" type="number" step="0.01" min="0" placeholder="Quantity" />
+          <input name="unit" placeholder="Unit: kg, litre, packet" />
+        </div>
+        <input name="total_cost" type="number" step="0.01" min="0" placeholder="Total purchase amount" required />
+        <input name="supplier" placeholder="Supplier" />
+        <select name="payment_method" id="stockMethod"></select>
+        <div class="extra-fields" data-area="stock"></div>
+        <button type="submit">Save purchase</button>
+      </form>
+    </dialog>
+
+    <dialog id="settingsModal" class="modal">
+      <form id="settingsForm" class="stack-form modal-card">
+        <div class="panel-head">
+          <h2>Global Settings</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Restaurant Name</label>
+          <input name="store_name" placeholder="Your restaurant name" required />
+        </div>
+        
+        <div class="setting-group">
+          <label class="setting-label">Browser Notifications</label>
+          <label class="setting-row">
+            <input name="notification_enabled" type="checkbox" />
+            <span>Enable udhari reminders</span>
+          </label>
+        </div>
+        
+        <div class="setting-group">
+          <div class="panel-head" style="margin-bottom: 6px;">
+            <label class="setting-label" style="margin: 0;">WhatsApp Message Template</label>
+            <button type="button" id="restoreMessageBtn" class="ghost" style="min-height: 28px; padding: 4px 8px; font-size: 11px;">Restore Default</button>
+          </div>
+          <textarea name="reminder_message" placeholder="Reminder message"></textarea>
+          <small class="subtle">Use {name}, {amount}, {store}, {date} as placeholders.</small>
+        </div>
+        <button type="submit">Save settings</button>
+        <hr style="border:none;border-top:1px solid var(--line);margin:6px 0;">
+        <button type="button" class="danger" onclick="logout()" style="width:100%;">🚪 Sign Out</button>
+      </form>
+    </dialog>
+
+    <dialog id="notificationModal" class="modal">
+      <section class="modal-card">
+        <div class="panel-head">
+          <h2>Udhari Reminders</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <div id="notificationRows" class="notification-list"></div>
+      </section>
+    </dialog>
+
+    <dialog id="tableMenuModal" class="modal">
+      <section class="modal-card">
+        <div class="panel-head">
+          <h2>Menu</h2>
+          <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
+        </div>
+        <div id="tableProducts" class="product-grid compact"></div>
+      </section>
+    </dialog>
+
+    <div id="toast" class="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

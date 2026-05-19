@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel — Restaurant Control Desk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/styles.css">
+<style>
+body { background: var(--bg); min-height: 100vh; }
+
+/* Topbar matching main app */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px clamp(14px, 4vw, 36px);
+  background: #fffdf8;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(32,33,36,.06);
+}
+.brand-block { min-width: 0; display: grid; gap: 2px; }
+.eyebrow { margin: 0; color: var(--accent-2); font-weight: 800; font-size: 12px; text-transform: uppercase; }
+.page-title { font-size: 28px; font-weight: 900; color: var(--ink); line-height: 1.12; }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+
+main { width: min(1200px, 100%); margin: 0 auto; padding: 20px clamp(10px, 3vw, 32px) 48px; }
+
+/* Stats strip */
+.stats { grid-template-columns: repeat(3, minmax(140px, 1fr)); margin-bottom: 20px; }
+.stat small { display: block; color: var(--muted); margin-bottom: 6px; font-size: 13px; }
+.stat strong { font-size: 26px; font-weight: 900; color: var(--ink); }
+.stat.pending strong { color: #d97706; }
+.stat.approved strong { color: var(--accent); }
+.stat.revoked strong { color: var(--accent-2); }
+
+/* Filter tabs — same as app tabs */
+.filter-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filter-tabs button {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+.filter-tabs button.active { background: var(--ink); color: white; border-color: var(--ink); }
+
+/* User table */
+.users-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
+.panel-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.panel-head h2 { margin: 0; font-size: 16px; }
+table { width: 100%; border-collapse: collapse; }
+thead { background: #f7f3ec; }
+th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+td { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14px; vertical-align: middle; }
+tr:hover td { background: #fbfaf6; }
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid;
+}
+.status-badge.pending { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+.status-badge.approved { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.status-badge.revoked { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+
+/* Action buttons */
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.actions button {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.btn-approve { background: var(--accent); color: white; }
+.btn-revoke { background: #ebe7df; color: var(--ink); }
+.btn-delete { background: #b42318; color: white; }
+
+/* Empty state */
+.empty-state { padding: 32px; text-align: center; color: var(--muted); }
+.empty-state span { font-size: 28px; display: block; margin-bottom: 8px; }
+
+/* Auto-refresh note */
+.refresh-note { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand-block">
+    <p class="eyebrow">Restaurant Control Desk</p>
+    <div class="page-title">Admin Panel</div>
+  </div>
+  <div class="top-actions">
+    <span class="refresh-note" id="lastRefresh">Loading...</span>
+    <button class="ghost" onclick="loadUsers()" style="min-height:38px;padding:8px 14px;font-size:13px;">↻ Refresh</button>
+    <button class="danger" onclick="logout()" style="min-height:38px;padding:8px 14px;font-size:13px;">Sign Out</button>
+  </div>
+</header>
+
+<main>
+  <div class="stats" style="display:grid;gap:10px;margin-bottom:20px;grid-template-columns:repeat(3,minmax(140px,1fr));">
+    <div class="stat panel pending">
+      <small>Pending Approval</small>
+      <strong id="cntPending">—</strong>
+    </div>
+    <div class="stat panel approved">
+      <small>Approved Users</small>
+      <strong id="cntApproved">—</strong>
+    </div>
+    <div class="stat panel revoked">
+      <small>Revoked</small>
+      <strong id="cntRevoked">—</strong>
+    </div>
+  </div>
+
+  <div class="filter-tabs">
+    <button id="fAll" class="active" onclick="setFilter('all')">All Users</button>
+    <button id="fPending" onclick="setFilter('pending')">⏳ Pending</button>
+    <button id="fApproved" onclick="setFilter('approved')">✅ Approved</button>
+    <button id="fRevoked" onclick="setFilter('revoked')">🚫 Revoked</button>
+  </div>
+
+  <div class="users-panel">
+    <div class="panel-head">
+      <h2>User Accounts</h2>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Registered</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="userTable"></tbody>
+    </table>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let allUsers = [];
+let currentFilter = 'all';
+
+function setFilter(f) {
+  currentFilter = f;
+  ['All','Pending','Approved','Revoked'].forEach(k => {
+    const id = 'f' + k;
+    const match = f === k.toLowerCase() || (k === 'All' && f === 'all');
+    document.getElementById(id).classList.toggle('active', match);
+  });
+  renderTable();
+}
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/admin/users');
+    if (res.status === 403) { window.location.href = '/login'; return; }
+    const data = await res.json();
+    allUsers = data.users || [];
+    updateStats();
+    renderTable();
+    document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    showToast('Failed to load users');
+  }
+}
+
+function updateStats() {
+  document.getElementById('cntPending').textContent = allUsers.filter(u => u.status === 'pending').length;
+  document.getElementById('cntApproved').textContent = allUsers.filter(u => u.status === 'approved').length;
+  document.getElementById('cntRevoked').textContent = allUsers.filter(u => u.status === 'revoked').length;
+}
+
+function renderTable() {
+  const list = currentFilter === 'all' ? allUsers : allUsers.filter(u => u.status === currentFilter);
+  const tbody = document.getElementById('userTable');
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span>👥</span>No users found</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map((u, i) => {
+    const date = new Date(u.created_at * 1000).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+    const approveBtn = u.status !== 'approved' ? `<button class="btn-approve" onclick="action('approve',${u.id})">✓ Approve</button>` : '';
+    const revokeBtn = u.status === 'approved' ? `<button class="btn-revoke" onclick="action('revoke',${u.id})">⊘ Revoke</button>` : '';
+    const deleteBtn = `<button class="btn-delete" onclick="action('delete',${u.id})">✕ Delete</button>`;
+    return `<tr>
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td><strong>${u.email}</strong></td>
+      <td><span class="status-badge ${u.status}">${u.status}</span></td>
+      <td style="color:var(--muted)">${date}</td>
+      <td><div class="actions">${approveBtn}${revokeBtn}${deleteBtn}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function action(type, id) {
+  if (type === 'delete' && !confirm('Delete this user permanently?')) return;
+  try {
+    const res = await fetch(`/api/admin/users/${type}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (!res.ok) throw new Error();
+    const msgs = { approve: 'User approved ✓', revoke: 'Access revoked', delete: 'User deleted' };
+    showToast(msgs[type]);
+    loadUsers();
+  } catch (e) {
+    showToast('Action failed');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+
+loadUsers();
+setInterval(loadUsers, 30000);
+</script>
+</body>
+</html>
