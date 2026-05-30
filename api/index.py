@@ -117,7 +117,16 @@ def query_rows(client, table, filters=None, order_by=None, limit_count=None):
         for col, val in filters.items():
             query = query.eq(col, val)
     if order_by:
-        query = query.order(order_by)
+        for part in order_by.split(','):
+            part = part.strip()
+            desc = False
+            if part.endswith('.desc'):
+                desc = True
+                part = part[:-5]
+            elif part.endswith('.asc'):
+                desc = False
+                part = part[:-4]
+            query = query.order(part, desc=desc)
     if limit_count:
         query = query.limit(limit_count)
     try:
