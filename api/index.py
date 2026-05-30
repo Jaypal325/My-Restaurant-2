@@ -1,7 +1,7 @@
 import json, os, time, uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urlunparse
 
 import pg8000.dbapi as pg
 from flask import Flask, g, jsonify, redirect, request, send_from_directory, session
@@ -9,7 +9,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env.local")
+    dotenv_path = Path(__file__).parent.parent / ".env.local"
+    if not load_dotenv(dotenv_path):
+        load_dotenv(Path(__file__).parent.parent / ".env")
 except ImportError:
     pass
 
@@ -66,6 +68,36 @@ def get_db():
         conn.autocommit = False
         g.db = conn
     return g.db
+
+
+def sanitize_db_url(url):
+    if not url:
+        return ""
+    p = urlparse(url)
+    auth = ""
+    if p.username:
+        auth = p.username
+        if p.password:
+            auth += ":*****"
+        auth += "@"
+    netloc = f"{auth}{p.hostname or ''}{f':{p.port}' if p.port else ''}"
+    return urlunparse((p.scheme, netloc, p.path or "", p.params or "", p.query or "", p.fragment or ""))
+
+
+def get_db_status():
+    if not DATABASE_URL:
+        return {"configured": False, "status": "DATABASE_URL is not configured.", "url": ""}
+    try:
+        conn = pg.connect(**DB_KWARGS)
+        conn.close()
+        return {"configured": True, "status": "connected", "url": sanitize_db_url(DATABASE_URL)}
+    except Exception as exc:
+        return {"configured": True, "status": f"connection failed: {exc}", "url": sanitize_db_url(DATABASE_URL)}
+
+
+def print_db_status():
+    info = get_db_status()
+    print(f"[DB] status={info['status']} url={info['url'] or '<none>'}")
 
 
 def cursor_of(conn):
@@ -347,6 +379,11 @@ def auth_me():
         return jsonify({"role": "admin", "email": session.get("email")})
     return jsonify({"user_id": session.get("user_id"), "email": session.get("email"),
                     "status": session.get("status")})
+
+
+@app.route("/api/db-status")
+def api_db_status():
+    return jsonify(get_db_status())
 
 
 # ── Admin routes ──────────────────────────────────────────────────────────────
@@ -641,6 +678,10 @@ if DATABASE_URL:
         init_db()
     except Exception as _e:
         print(f"[WARN] init_db() failed (will retry on first request): {_e}")
+    finally:
+        print_db_status()
+else:
+    print_db_status()
 
 if __name__ == "__main__":
     app.run(debug=True, port=8000)
