@@ -3,6 +3,8 @@ let calcBill = [];
 let tableBills = {};
 let selectedTable = null;
 let editTablesMode = false;
+let touchStartX = 0;
+let isCalcOpen = false;
 
 const COLORS = ["#176b87", "#1d7a55", "#c2412d", "#7c3aed", "#b7791f", "#2563eb", "#be185d", "#374151"];
 const DEFAULT_REMINDER_MESSAGE = "Namaste {name}, your udhari of {amount} is pending at {store}. Please pay when possible.";
@@ -10,24 +12,54 @@ const rupee = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+let activeRequests = 0;
+
+function showLoading() {
+  activeRequests++;
+  const overlay = $("#loadingOverlay");
+  if (overlay && !overlay.open) {
+    overlay.showModal();
+  }
+}
+
+function hideLoading() {
+  activeRequests = Math.max(0, activeRequests - 1);
+  if (activeRequests === 0) {
+    const overlay = $("#loadingOverlay");
+    if (overlay && overlay.open) {
+      overlay.close();
+    }
+  }
+}
+
 async function api(path, payload) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Request failed");
-  state = data.state || data;
-  render();
-  return data;
+  showLoading();
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Request failed");
+    state = data.state || data;
+    render();
+    return data;
+  } finally {
+    hideLoading();
+  }
 }
 
 async function loadState() {
-  const response = await fetch("/api/state");
-  state = await response.json();
-  render();
-  checkReminders();
+  showLoading();
+  try {
+    const response = await fetch("/api/state");
+    state = await response.json();
+    render();
+    checkReminders();
+  } finally {
+    hideLoading();
+  }
 }
 
 function toast(message) {
@@ -352,7 +384,10 @@ function renderProfit() {
   const accounts = state.summary?.accounts || [];
   $("#accounts").innerHTML = accounts.map((account) => `
     <article class="account">
-      <small>${escapeHtml(account.name)}</small>
+      <div class="account-header">
+        <small style="color: var(--muted); margin: 0;">${escapeHtml(account.name)}</small>
+        <button type="button" class="ghost edit-account-btn" data-id="${account.id}" style="padding: 2px 6px; min-height: auto; font-size: 11px; margin: 0; line-height: 1;">Edit</button>
+      </div>
       <strong>${rupee.format(account.current_amount || 0)}</strong>
     </article>
   `).join("");
@@ -363,7 +398,12 @@ function renderProfit() {
           <strong>${escapeHtml(tx.title)}</strong>
           <div class="subtle">${escapeHtml(tx.source)} - ${new Date(tx.created_at * 1000).toLocaleString()}</div>
         </div>
-        <strong>${tx.kind === "income" ? "+" : "-"} ${rupee.format(tx.amount)}</strong>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <strong style="color: ${tx.kind === "income" ? "var(--accent)" : "var(--accent-2)"}">
+            ${tx.kind === "income" ? "+" : "-"} ${rupee.format(tx.amount)}
+          </strong>
+          <button type="button" class="ghost delete-tx-btn" data-id="${tx.id}" style="padding: 4px 8px; min-height: auto; color: var(--muted); font-size: 14px; margin: 0;" aria-label="Delete entry">×</button>
+        </div>
       </div>
     </article>
   `).join("") : `<div class="empty">Paid sales, stock purchases, udhari payments, and manual entries will appear here.</div>`;
@@ -472,6 +512,31 @@ document.addEventListener("click", async (event) => {
     closeModalInside(event.target);
   }
 
+  const editAccount = event.target.closest(".edit-account-btn");
+  if (editAccount) {
+    const id = Number(editAccount.dataset.id);
+    const account = (state.summary?.accounts || []).find((a) => a.id === id);
+    if (account) {
+      const form = $("#accountForm");
+      form.elements.namedItem("id").value = account.id;
+      form.elements.namedItem("name").value = account.name;
+      form.elements.namedItem("opening_amount").value = account.opening_amount;
+      $("#accountSubmitBtn").textContent = "Update";
+      $("#cancelAccountEdit").classList.remove("hidden");
+    }
+    return;
+  }
+
+  const deleteTx = event.target.closest(".delete-tx-btn");
+  if (deleteTx) {
+    const id = Number(deleteTx.dataset.id);
+    if (confirm("Are you sure you want to delete this ledger entry?")) {
+      await api("/api/transactions/delete", { id });
+      toast("Ledger entry deleted.");
+    }
+    return;
+  }
+
   const editProduct = event.target.closest("[data-manage-edit]");
   if (editProduct) {
     const product = (state.products || []).find((p) => p.id === Number(editProduct.dataset.manageEdit));
@@ -534,7 +599,7 @@ document.addEventListener("click", async (event) => {
   if (table) {
     selectedTable = Number(table.dataset.table);
     render();
-    if (!editTablesMode) {
+    if (!editTablesMode && table.classList.contains("table-chip")) {
       openModal("#tableMenuModal");
     }
   }
@@ -651,10 +716,39 @@ $("#tableCheckoutForm").addEventListener("submit", async (event) => {
   await saveSale(tableBills[selectedTable] || [], event.currentTarget, "table", selectedTable);
 });
 
+function resetAccountForm() {
+  const form = $("#accountForm");
+  form.reset();
+  form.elements.namedItem("id").value = "";
+  $("#accountSubmitBtn").textContent = "Add field";
+  $("#cancelAccountEdit").classList.add("hidden");
+}
+
+$("#cancelAccountEdit").addEventListener("click", resetAccountForm);
+
 $("#accountForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  await api("/api/accounts", formData(event.currentTarget));
-  event.currentTarget.reset();
+  const data = formData(event.currentTarget);
+  if (data.id) {
+    await api("/api/accounts/update", data);
+    toast("Account updated.");
+  } else {
+    await api("/api/accounts", data);
+    toast("Account added.");
+  }
+  resetAccountForm();
+});
+
+$("#deleteTable").addEventListener("click", async () => {
+  if (!selectedTable) return toast("Select a table to delete first.");
+  const table = (state.tables || []).find((t) => t.id === selectedTable);
+  if (!table) return;
+  if (confirm(`Delete ${table.label}?`)) {
+    await api("/api/tables/delete", { id: selectedTable });
+    selectedTable = null;
+    $("#tableEditor").reset();
+    toast("Table deleted.");
+  }
 });
 
 $("#transactionForm").addEventListener("submit", async (event) => {
@@ -806,7 +900,77 @@ if (pmList) {
   });
 }
 
+// Swipe Calculator
+let calcValue = "0";
+let calcDisplay = null;
+
+function initSwipeCalculator() {
+  calcDisplay = $("#calcDisplay");
+  if (!calcDisplay) return;
+  
+  const calc = $("#swipeCalculator");
+  
+  document.addEventListener("touchstart", (e) => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  
+  document.addEventListener("touchend", (e) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchEndX - touchStartX;
+    
+    // Swipe right to open calculator (minimum 50px from left edge)
+    if (diff > 50 && touchStartX < 50 && !isCalcOpen) {
+      isCalcOpen = true;
+      calc.classList.add("open");
+    }
+    
+    // Swipe left to close calculator
+    if (diff < -50 && isCalcOpen) {
+      isCalcOpen = false;
+      calc.classList.remove("open");
+    }
+  }, { passive: true });
+  
+  // Calculator button handlers
+  calc.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-key]");
+    if (!btn) return;
+    handleCalcKey(btn.dataset.key);
+  });
+}
+
+function updateCalcDisplay() {
+  if (calcDisplay) calcDisplay.value = calcValue;
+}
+
+function handleCalcKey(key) {
+  if (key === "=") {
+    try {
+      calcValue = String(eval(calcValue));
+    } catch (err) {
+      calcValue = "Error";
+    }
+  } else if (key === "C") {
+    calcValue = "0";
+  } else if (key === "DEL") {
+    calcValue = calcValue.slice(0, -1) || "0";
+  } else if (key === ".") {
+    const parts = calcValue.split(/[\+\-\*\/]/);
+    const lastPart = parts[parts.length - 1];
+    if (!lastPart.includes(".")) {
+      calcValue += ".";
+    }
+  } else if (["+", "-", "*", "/"].includes(key)) {
+    if (calcValue === "0") return;
+    calcValue += key;
+  } else {
+    calcValue = calcValue === "0" ? key : calcValue + key;
+  }
+  updateCalcDisplay();
+}
+
 loadState();
+initSwipeCalculator();
 syncHeader();
 setInterval(checkReminders, 60000);
 

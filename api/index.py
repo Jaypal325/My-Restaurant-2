@@ -110,9 +110,14 @@ def require_auth():
 
 # ── Query helpers ─────────────────────────────────────────────────────────────
 
-def query_rows(client, table, filters=None, order_by=None, limit_count=None):
+def query_rows(client, table, filters=None, order_by=None, limit_count=None, user_id=None):
     """Query rows from Supabase table and parse JSON fields."""
     query = client.table(table).select('*')
+    
+    # Always filter by user_id for multi-user tables (unless it's the users table itself)
+    if user_id and table != 'users' and table != 'settings':
+        query = query.eq('user_id', user_id)
+    
     if filters:
         for col, val in filters.items():
             query = query.eq(col, val)
@@ -146,13 +151,17 @@ def query_rows(client, table, filters=None, order_by=None, limit_count=None):
         print(f"[ERROR] query_rows from {table}: {e}")
         return []
 
-def ensure_customer(client, name, phone="", reminder_at=None, extra_data=None):
+def ensure_customer(client, name, phone="", reminder_at=None, extra_data=None, user_id=None):
     """Ensure customer exists, create if not."""
     if not reminder_at:
         reminder_at = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M")
     try:
-        # Search for existing customer (case-insensitive)
-        existing = client.table('customers').select('*').ilike('name', name).execute()
+        # Search for existing customer (case-insensitive) for this user
+        existing = client.table('customers').select('*').ilike('name', name)
+        if user_id:
+            existing = existing.eq('user_id', user_id)
+        existing = existing.execute()
+        
         if existing.data:
             person = existing.data[0]
             client.table('customers').update({'reminder_at': reminder_at}).eq('id', person['id']).execute()
@@ -161,6 +170,7 @@ def ensure_customer(client, name, phone="", reminder_at=None, extra_data=None):
         response = client.table('customers').insert({
             'name': name,
             'phone': phone,
+            'user_id': user_id,
             'reminder_at': reminder_at,
             'extra_data': json.dumps(extra_data or {}),
             'created_at': now()
@@ -170,14 +180,19 @@ def ensure_customer(client, name, phone="", reminder_at=None, extra_data=None):
         print(f"[ERROR] ensure_customer: {e}")
         return None
 
-def account_id_for_method(client, method):
-    """Get or create account by method name."""
+def account_id_for_method(client, method, user_id=None):
+    """Get or create account by method name for the user."""
     try:
-        existing = client.table('accounts').select('id').ilike('name', method).execute()
+        query = client.table('accounts').select('id').ilike('name', method)
+        if user_id:
+            query = query.eq('user_id', user_id)
+        existing = query.execute()
+        
         if existing.data:
             return existing.data[0]['id']
         response = client.table('accounts').insert({
             'name': method.title(),
+            'user_id': user_id,
             'opening_amount': 0,
             'created_at': now()
         }).execute()
@@ -186,13 +201,13 @@ def account_id_for_method(client, method):
         print(f"[ERROR] account_id_for_method: {e}")
         return None
 
-def build_summary(client):
-    """Build financial summary."""
+def build_summary(client, user_id=None):
+    """Build financial summary for the user."""
     try:
-        accounts = query_rows(client, 'accounts', order_by='name')
-        tx = query_rows(client, 'transactions', order_by='created_at.desc')
-        customers = query_rows(client, 'customers')
-        udhari_entries = query_rows(client, 'udhari_entries')
+        accounts = query_rows(client, 'accounts', order_by='name', user_id=user_id)
+        tx = query_rows(client, 'transactions', order_by='created_at.desc', user_id=user_id)
+        customers = query_rows(client, 'customers', user_id=user_id)
+        udhari_entries = query_rows(client, 'udhari_entries', user_id=user_id)
         
         # Calculate customer balances (debit - credit)
         customer_balances = []
@@ -226,17 +241,30 @@ def build_summary(client):
         print(f"[ERROR] build_summary: {e}")
         return {}
 
-def build_state(client):
-    """Build complete app state."""
+def build_state(client, user_id=None):
+    """Build complete app state for the user."""
+    if user_id:
+        try:
+            existing_accounts = client.table('accounts').select('id').eq('user_id', user_id).execute()
+            if not existing_accounts.data:
+                now_time = now()
+                client.table('accounts').insert([
+                    {'name': 'Cash', 'user_id': user_id, 'opening_amount': 0, 'created_at': now_time},
+                    {'name': 'Online', 'user_id': user_id, 'opening_amount': 0, 'created_at': now_time},
+                    {'name': 'Bank', 'user_id': user_id, 'opening_amount': 0, 'created_at': now_time}
+                ]).execute()
+        except Exception as e:
+            print(f"[ERROR] auto-seeding default accounts: {e}")
+
     return {
-        'products': query_rows(client, 'products', order_by='created_at.desc'),
-        'sales': query_rows(client, 'sales', order_by='created_at.desc', limit_count=100),
-        'stock': query_rows(client, 'stock_purchases', order_by='created_at.desc', limit_count=100),
-        'tables': query_rows(client, 'restaurant_tables', order_by='id'),
-        'transactions': query_rows(client, 'transactions', order_by='created_at.desc', limit_count=150),
-        'custom_fields': query_rows(client, 'custom_fields', order_by='area,created_at'),
-        'settings': {r['key']: r['value'] for r in query_rows(client, 'settings')},
-        'summary': build_summary(client)
+        'products': query_rows(client, 'products', order_by='created_at.desc', user_id=user_id),
+        'sales': query_rows(client, 'sales', order_by='created_at.desc', limit_count=100, user_id=user_id),
+        'stock': query_rows(client, 'stock_purchases', order_by='created_at.desc', limit_count=100, user_id=user_id),
+        'tables': query_rows(client, 'restaurant_tables', order_by='id', user_id=user_id),
+        'transactions': query_rows(client, 'transactions', order_by='created_at.desc', limit_count=150, user_id=user_id),
+        'custom_fields': query_rows(client, 'custom_fields', order_by='area,created_at', user_id=user_id),
+        'settings': {r['key']: r['value'] for r in query_rows(client, 'settings', user_id=user_id)},
+        'summary': build_summary(client, user_id=user_id)
     }
 
 
@@ -421,7 +449,8 @@ def static_files(filename):
 def get_state():
     try:
         client = get_db()
-        state = build_state(client)
+        user_id = session.get("user_id")
+        state = build_state(client, user_id=user_id)
         return jsonify(state)
     except Exception as e:
         print(f"[ERROR] get_state: {e}")
@@ -432,15 +461,17 @@ def create_product():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         response = client.table('products').insert({
             'name': data.get("name", "Item").strip(),
             'price': float(data.get("price") or 0),
             'color': data.get("color") or "#2d6cdf",
+            'user_id': user_id,
             'extra_data': json.dumps(data.get("extra_data") or {}),
             'created_at': now()
         }).execute()
         new_id = response.data[0]['id']
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": new_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_product: {e}")
@@ -451,13 +482,14 @@ def update_product():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         client.table('products').update({
             'name': data.get("name", "Item").strip(),
             'price': float(data.get("price") or 0),
             'color': data.get("color") or "#176b87",
             'extra_data': json.dumps(data.get("extra_data") or {})
-        }).eq('id', int(data["id"])).execute()
-        state = build_state(client)
+        }).eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] update_product: {e}")
@@ -468,8 +500,9 @@ def delete_product():
     data = request.get_json() or {}
     try:
         client = get_db()
-        client.table('products').delete().eq('id', int(data["id"])).execute()
-        state = build_state(client)
+        user_id = session.get("user_id")
+        client.table('products').delete().eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] delete_product: {e}")
@@ -480,10 +513,11 @@ def reorder_products():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         base_time = now()
         for idx, pid in enumerate(data.get("ids", [])):
-            client.table('products').update({'created_at': base_time - idx}).eq('id', int(pid)).execute()
-        state = build_state(client)
+            client.table('products').update({'created_at': base_time - idx}).eq('id', int(pid)).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] reorder_products: {e}")
@@ -494,13 +528,14 @@ def update_setting():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         # Upsert: try update first, then insert if not exists
-        existing = client.table('settings').select('*').eq('key', data.get("key", "store_name")).execute()
+        existing = client.table('settings').select('*').eq('key', data.get("key", "store_name")).eq('user_id', user_id).execute()
         if existing.data:
-            client.table('settings').update({'value': data.get("value", "")}).eq('key', data.get("key", "store_name")).execute()
+            client.table('settings').update({'value': data.get("value", "")}).eq('key', data.get("key", "store_name")).eq('user_id', user_id).execute()
         else:
-            client.table('settings').insert({'key': data.get("key", "store_name"), 'value': data.get("value", "")}).execute()
-        state = build_state(client)
+            client.table('settings').insert({'key': data.get("key", "store_name"), 'value': data.get("value", ""), 'user_id': user_id}).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] update_setting: {e}")
@@ -513,15 +548,17 @@ def create_sale():
     total = float(data.get("total") or sum(float(i.get("price",0)) * float(i.get("qty",1)) for i in items))
     try:
         client = get_db()
+        user_id = session.get("user_id")
         customer_id = data.get("customer_id")
         if data.get("payment_status") == "udhari":
             customer_id = ensure_customer(client, data.get("customer_name") or "Walk-in Customer",
-                                          reminder_at=data.get("reminder_at"))
+                                          reminder_at=data.get("reminder_at"), user_id=user_id)
         # Create sale
         sale_response = client.table('sales').insert({
             'source': data.get("source", "calculator"),
             'table_id': data.get("table_id"),
             'customer_id': customer_id,
+            'user_id': user_id,
             'payment_status': data.get("payment_status", "paid"),
             'payment_method': data.get("payment_method", "cash"),
             'subtotal': total,
@@ -535,6 +572,7 @@ def create_sale():
         if data.get("payment_status") == "udhari":
             client.table('udhari_entries').insert({
                 'customer_id': customer_id,
+                'user_id': user_id,
                 'kind': 'debit',
                 'amount': total,
                 'note': 'Bill marked as udhari',
@@ -543,10 +581,11 @@ def create_sale():
                 'created_at': now()
             }).execute()
         else:
-            aid = account_id_for_method(client, data.get("payment_method", "cash"))
+            aid = account_id_for_method(client, data.get("payment_method", "cash"), user_id=user_id)
             client.table('transactions').insert({
                 'kind': 'income',
                 'account_id': aid,
+                'user_id': user_id,
                 'amount': total,
                 'title': 'Paid sale',
                 'source': data.get("source", "calculator"),
@@ -555,9 +594,9 @@ def create_sale():
             }).execute()
         
         if data.get("table_id"):
-            client.table('restaurant_tables').update({'status': 'empty'}).eq('id', data["table_id"]).execute()
+            client.table('restaurant_tables').update({'status': 'empty'}).eq('id', data["table_id"]).eq('user_id', user_id).execute()
         
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": sale_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_sale: {e}")
@@ -568,19 +607,21 @@ def create_customer():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         cid = ensure_customer(client, data.get("name", "Customer").strip(),
-                              data.get("phone", ""), data.get("reminder_at"), data.get("extra_data"))
+                              data.get("phone", ""), data.get("reminder_at"), data.get("extra_data"), user_id=user_id)
         amount = float(data.get("amount") or 0)
         if amount:
             client.table('udhari_entries').insert({
                 'customer_id': cid,
+                'user_id': user_id,
                 'kind': 'debit',
                 'amount': amount,
                 'note': data.get("note", "Opening udhari"),
                 'source': 'manual',
                 'created_at': now()
             }).execute()
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": cid, "state": state})
     except Exception as e:
         print(f"[ERROR] create_customer: {e}")
@@ -593,25 +634,28 @@ def create_udhari_payment():
     cid = int(data["customer_id"])
     try:
         client = get_db()
+        user_id = session.get("user_id")
         client.table('udhari_entries').insert({
             'customer_id': cid,
+            'user_id': user_id,
             'kind': 'credit',
             'amount': amount,
             'note': data.get("note", "Payment received"),
             'source': 'payment',
             'created_at': now()
         }).execute()
-        aid = account_id_for_method(client, data.get("payment_method", "cash"))
+        aid = account_id_for_method(client, data.get("payment_method", "cash"), user_id=user_id)
         client.table('transactions').insert({
             'kind': 'income',
             'account_id': aid,
+            'user_id': user_id,
             'amount': amount,
             'title': 'Udhari payment',
             'source': 'udhari',
             'ref_id': cid,
             'created_at': now()
         }).execute()
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] create_udhari_payment: {e}")
@@ -623,27 +667,30 @@ def create_stock():
     total = float(data.get("total_cost") or 0)
     try:
         client = get_db()
+        user_id = session.get("user_id")
         stock_response = client.table('stock_purchases').insert({
             'item_name': data.get("item_name", "Stock item").strip(),
             'quantity': float(data.get("quantity") or 0),
             'unit': data.get("unit", ""),
             'total_cost': total,
             'supplier': data.get("supplier", ""),
+            'user_id': user_id,
             'extra_data': json.dumps(data.get("extra_data") or {}),
             'created_at': now()
         }).execute()
         sid = stock_response.data[0]['id']
-        aid = account_id_for_method(client, data.get("payment_method", "cash"))
+        aid = account_id_for_method(client, data.get("payment_method", "cash"), user_id=user_id)
         client.table('transactions').insert({
             'kind': 'expense',
             'account_id': aid,
+            'user_id': user_id,
             'amount': total,
             'title': 'Stock purchase',
             'source': 'stock',
             'ref_id': sid,
             'created_at': now()
         }).execute()
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": sid, "state": state})
     except Exception as e:
         print(f"[ERROR] create_stock: {e}")
@@ -654,14 +701,16 @@ def create_account():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         response = client.table('accounts').insert({
             'name': data.get("name", "Account").strip(),
+            'user_id': user_id,
             'opening_amount': float(data.get("opening_amount") or 0),
             'extra_data': json.dumps(data.get("extra_data") or {}),
             'created_at': now()
         }).execute()
         new_id = response.data[0]['id']
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": new_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_account: {e}")
@@ -672,9 +721,11 @@ def create_transaction():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         response = client.table('transactions').insert({
             'kind': data.get("kind", "income"),
             'account_id': data.get("account_id"),
+            'user_id': user_id,
             'amount': float(data.get("amount") or 0),
             'title': data.get("title", "Manual entry"),
             'source': 'manual',
@@ -682,7 +733,7 @@ def create_transaction():
             'created_at': now()
         }).execute()
         new_id = response.data[0]['id']
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": new_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_transaction: {e}")
@@ -693,17 +744,19 @@ def create_table():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         response = client.table('restaurant_tables').insert({
             'label': data.get("label") or f"T-{uuid.uuid4().hex[:3].upper()}",
             'x': float(data.get("x") or 80),
             'y': float(data.get("y") or 80),
             'seats': int(data.get("seats") or 4),
+            'user_id': user_id,
             'status': data.get("status", "empty"),
             'extra_data': json.dumps(data.get("extra_data") or {}),
             'created_at': now()
         }).execute()
         new_id = response.data[0]['id']
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": new_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_table: {e}")
@@ -714,12 +767,13 @@ def move_table():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         client.table('restaurant_tables').update({
             'x': data["x"],
             'y': data["y"],
             'status': data.get("status", "empty")
-        }).eq('id', data["id"]).execute()
-        state = build_state(client)
+        }).eq('id', data["id"]).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] move_table: {e}")
@@ -730,6 +784,7 @@ def update_table():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         client.table('restaurant_tables').update({
             'label': data.get("label", "Table").strip(),
             'seats': int(data.get("seats") or 4),
@@ -737,8 +792,8 @@ def update_table():
             'y': float(data.get("y") or 80),
             'status': data.get("status", "empty"),
             'extra_data': json.dumps(data.get("extra_data") or {})
-        }).eq('id', int(data["id"])).execute()
-        state = build_state(client)
+        }).eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
         return jsonify({"state": state})
     except Exception as e:
         print(f"[ERROR] update_table: {e}")
@@ -749,17 +804,61 @@ def create_custom_field():
     data = request.get_json() or {}
     try:
         client = get_db()
+        user_id = session.get("user_id")
         response = client.table('custom_fields').insert({
             'area': data.get("area", "general"),
             'name': data.get("name", "Field"),
             'field_type': data.get("field_type", "text"),
+            'user_id': user_id,
             'created_at': now()
         }).execute()
         new_id = response.data[0]['id']
-        state = build_state(client)
+        state = build_state(client, user_id=user_id)
         return jsonify({"id": new_id, "state": state})
     except Exception as e:
         print(f"[ERROR] create_custom_field: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/accounts/update", methods=["POST"])
+def update_account():
+    data = request.get_json() or {}
+    try:
+        client = get_db()
+        user_id = session.get("user_id")
+        client.table('accounts').update({
+            'name': data.get("name", "Account").strip(),
+            'opening_amount': float(data.get("opening_amount") or 0)
+        }).eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
+        return jsonify({"state": state})
+    except Exception as e:
+        print(f"[ERROR] update_account: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/transactions/delete", methods=["POST"])
+def delete_transaction():
+    data = request.get_json() or {}
+    try:
+        client = get_db()
+        user_id = session.get("user_id")
+        client.table('transactions').delete().eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
+        return jsonify({"state": state})
+    except Exception as e:
+        print(f"[ERROR] delete_transaction: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/tables/delete", methods=["POST"])
+def delete_table():
+    data = request.get_json() or {}
+    try:
+        client = get_db()
+        user_id = session.get("user_id")
+        client.table('restaurant_tables').delete().eq('id', int(data["id"])).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
+        return jsonify({"state": state})
+    except Exception as e:
+        print(f"[ERROR] delete_table: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.errorhandler(Exception)

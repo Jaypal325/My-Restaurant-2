@@ -264,14 +264,20 @@ class AppHandler(SimpleHTTPRequestHandler):
                     result = self.create_stock(db, data)
                 elif route == "/api/accounts":
                     result = self.create_account(db, data)
+                elif route == "/api/accounts/update":
+                    result = self.update_account(db, data)
                 elif route == "/api/transactions":
                     result = self.create_transaction(db, data)
+                elif route == "/api/transactions/delete":
+                    result = self.delete_transaction(db, data)
                 elif route == "/api/tables":
                     result = self.create_table(db, data)
                 elif route == "/api/tables/move":
                     result = self.move_table(db, data)
                 elif route == "/api/tables/update":
                     result = self.update_table(db, data)
+                elif route == "/api/tables/delete":
+                    result = self.delete_table(db, data)
                 elif route == "/api/custom-fields":
                     result = self.create_custom_field(db, data)
                 else:
@@ -421,6 +427,17 @@ class AppHandler(SimpleHTTPRequestHandler):
         )
         return {"id": cur.lastrowid, "state": self.get_state(db)}
 
+    def update_account(self, db, data):
+        db.execute(
+            "UPDATE accounts SET name=?, opening_amount=? WHERE id=?",
+            (
+                data.get("name", "Account").strip(),
+                float(data.get("opening_amount") or 0),
+                int(data["id"]),
+            ),
+        )
+        return {"state": self.get_state(db)}
+
     def create_transaction(self, db, data):
         cur = db.execute(
             "INSERT INTO transactions(kind, account_id, amount, title, source, extra_data, created_at) VALUES(?,?,?,?,?,?,?)",
@@ -435,6 +452,10 @@ class AppHandler(SimpleHTTPRequestHandler):
             ),
         )
         return {"id": cur.lastrowid, "state": self.get_state(db)}
+
+    def delete_transaction(self, db, data):
+        db.execute("DELETE FROM transactions WHERE id=?", (int(data["id"]),))
+        return {"state": self.get_state(db)}
 
     def create_table(self, db, data):
         cur = db.execute(
@@ -468,6 +489,10 @@ class AppHandler(SimpleHTTPRequestHandler):
                 int(data["id"]),
             ),
         )
+        return {"state": self.get_state(db)}
+
+    def delete_table(self, db, data):
+        db.execute("DELETE FROM restaurant_tables WHERE id=?", (int(data["id"]),))
         return {"state": self.get_state(db)}
 
     def create_custom_field(self, db, data):

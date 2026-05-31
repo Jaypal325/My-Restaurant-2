@@ -2,12 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <title>Restaurant Control Desk</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <dialog id="loadingOverlay" class="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Processing...</div>
+    </dialog>
     <header class="topbar" id="topbar">
       <div class="brand-block">
         <p class="eyebrow">Restaurant Control Desk</p>
@@ -113,6 +117,7 @@
               <input name="seats" type="number" min="1" placeholder="Seats" required />
               <button type="submit">Save table</button>
               <button id="addTable" class="ghost" type="button">Add table</button>
+              <button id="deleteTable" class="ghost danger" type="button" style="color: var(--accent-2);">Delete Table</button>
             </form>
             <div id="floor" class="floor"></div>
           </section>
@@ -144,9 +149,13 @@
             <h2>Current Amounts</h2>
             <div id="accounts" class="account-grid"></div>
             <form id="accountForm" class="inline-form">
+              <input name="id" type="hidden" />
               <input name="name" placeholder="Cash / Online / Bank / Wallet" required />
               <input name="opening_amount" type="number" step="0.01" placeholder="Current amount" />
-              <button type="submit">Add field</button>
+              <div class="form-actions" style="display: flex; gap: 8px;">
+                <button type="submit" id="accountSubmitBtn">Add field</button>
+                <button type="button" id="cancelAccountEdit" class="ghost hidden">Cancel</button>
+              </div>
             </form>
           </section>
           <section class="panel">
@@ -304,6 +313,21 @@
     </dialog>
 
     <div id="toast" class="toast"></div>
+    
+    <div id="swipeCalculator" class="swipe-calculator">
+      <div class="calc-panel">
+        <div class="calc-header">Quick Calc</div>
+        <input type="text" id="calcDisplay" class="calc-display" value="0" readonly>
+        <div class="calc-grid">
+          <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button><button data-key="/">÷</button>
+          <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button><button data-key="*">×</button>
+          <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button><button data-key="-">−</button>
+          <button data-key="0" class="span-2">0</button><button data-key=".">.</button><button data-key="+">+</button>
+          <button data-key="=" class="span-4">=</button>
+          <button data-key="C" class="span-2">C</button><button data-key="DEL" class="span-2">DEL</button>
+        </div>
+      </div>
+    </div>
     <script src="/app.js"></script>
   </body>
 </html>

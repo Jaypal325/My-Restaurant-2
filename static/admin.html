@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Admin Panel — Restaurant Control Desk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/styles.css">
@@ -94,6 +94,10 @@ tr:hover td { background: #fbfaf6; }
 </style>
 </head>
 <body>
+<dialog id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Processing...</div>
+</dialog>
 
 <header class="topbar">
   <div class="brand-block">
@@ -165,7 +169,28 @@ function setFilter(f) {
   renderTable();
 }
 
+let activeRequests = 0;
+
+function showLoading() {
+  activeRequests++;
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay && !overlay.open) {
+    overlay.showModal();
+  }
+}
+
+function hideLoading() {
+  activeRequests = Math.max(0, activeRequests - 1);
+  if (activeRequests === 0) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay && overlay.open) {
+      overlay.close();
+    }
+  }
+}
+
 async function loadUsers() {
+  showLoading();
   try {
     const res = await fetch('/api/admin/users');
     if (res.status === 403) { window.location.href = '/login'; return; }
@@ -176,6 +201,8 @@ async function loadUsers() {
     document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {
     showToast('Failed to load users');
+  } finally {
+    hideLoading();
   }
 }
 
@@ -209,6 +236,7 @@ function renderTable() {
 
 async function action(type, id) {
   if (type === 'delete' && !confirm('Delete this user permanently?')) return;
+  showLoading();
   try {
     const res = await fetch(`/api/admin/users/${type}`, {
       method: 'POST',
@@ -221,6 +249,8 @@ async function action(type, id) {
     loadUsers();
   } catch (e) {
     showToast('Action failed');
+  } finally {
+    hideLoading();
   }
 }
 
