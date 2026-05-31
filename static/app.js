@@ -145,7 +145,12 @@ function renderMethods() {
   const methodOptions = accounts.map((a) => `<option value="${escapeAttr(a.name.toLowerCase())}">${escapeHtml(a.name)}</option>`).join("");
   ["#calcMethod", "#stockMethod", "#tableMethod"].forEach((id) => {
     const el = $(id);
-    if (el) el.innerHTML = methodOptions;
+    if (el) {
+      el.innerHTML = methodOptions;
+      if (id === "#calcMethod" || id === "#tableMethod") {
+        el.value = "online";
+      }
+    }
   });
   const txAccount = $("#transactionAccount");
   if (txAccount) {
@@ -284,6 +289,13 @@ function renderBill(items, listSelector, totalSelector) {
 
 function renderCustomers() {
   const customers = state.summary?.customers || [];
+  
+  // Populate the datalist of customer names for both checkout forms
+  const dl = $("#customerList");
+  if (dl) {
+    dl.innerHTML = customers.map((c) => `<option value="${escapeAttr(c.name)}">${escapeHtml(c.phone || "")}</option>`).join("");
+  }
+  
   $("#udhariTotal").textContent = rupee.format(state.summary?.udhari_total || 0);
   $("#customers").innerHTML = customers.length ? customers.map((customer) => `
     <article class="row">
@@ -292,13 +304,16 @@ function renderCustomers() {
           <strong>${escapeHtml(customer.name)}</strong>
           ${customer.phone ? `<div class="subtle">${escapeHtml(customer.phone)}</div>` : ''}
         </div>
-        <strong>${rupee.format(customer.balance || 0)}</strong>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <strong>${rupee.format(customer.balance || 0)}</strong>
+          <button class="icon-btn ghost edit-customer-btn" data-customer-id="${customer.id}" type="button" style="min-height:32px; padding:4px 8px; font-size:12px; border:0; background:transparent;" aria-label="Edit Person">✏️</button>
+        </div>
       </div>
       <form class="pay-form" data-pay="${customer.id}">
         <input name="note" placeholder="Payment note" />
         <input name="amount" type="number" step="0.01" min="0" placeholder="Amount" required />
         <select name="payment_method">${(state.summary?.accounts || []).map(a => `<option value="${escapeAttr(a.name.toLowerCase())}">${escapeHtml(a.name)}</option>`).join("")}</select>
-        <div style="display: flex; gap: 8px;">
+        <div class="pay-actions" style="display: flex; gap: 8px;">
           <button type="button" class="ghost" data-send-reminder="${customer.id}" style="flex: 1;" aria-label="Send WhatsApp Reminder">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle;">
               <path d="M22 2L11 13"></path>
@@ -512,6 +527,27 @@ document.addEventListener("click", async (event) => {
     closeModalInside(event.target);
   }
 
+  const editCustomer = event.target.closest(".edit-customer-btn");
+  if (editCustomer) {
+    const id = Number(editCustomer.dataset.customerId);
+    const customers = state.summary?.customers || [];
+    const customer = customers.find(c => c.id === id);
+    if (customer) {
+      const form = $("#customerForm");
+      form.elements.namedItem("id").value = customer.id;
+      form.elements.namedItem("name").value = customer.name || "";
+      form.elements.namedItem("phone").value = customer.phone || "";
+      form.elements.namedItem("reminder_at").value = customer.reminder_at || defaultReminderValue();
+      form.elements.namedItem("notes").value = customer.notes || "";
+      $("#customerModalTitle").textContent = "Edit Udhari Person";
+      form.querySelector('button[type="submit"]').textContent = "Save changes";
+      $("#customerAmountField").classList.add("hidden");
+      $("#cancelCustomerEdit").classList.remove("hidden");
+      openModal("#customerModal");
+    }
+    return;
+  }
+
   const editAccount = event.target.closest(".edit-account-btn");
   if (editAccount) {
     const id = Number(editAccount.dataset.id);
@@ -607,6 +643,7 @@ document.addEventListener("click", async (event) => {
 
 $("#productMenuBtn").addEventListener("click", () => openProductModal());
 $("#openCustomerModal").addEventListener("click", () => {
+  resetCustomerForm();
   const form = $("#customerForm");
   if (!form.elements.namedItem("reminder_at").value) {
     form.elements.namedItem("reminder_at").value = defaultReminderValue();
@@ -657,14 +694,33 @@ $$(".clear-bill-btn").forEach((btn) => btn.addEventListener("click", () => {
   render();
 }));
 
+function resetCustomerForm() {
+  const form = $("#customerForm");
+  form.reset();
+  form.elements.namedItem("id").value = "";
+  $("#customerModalTitle").textContent = "Add Udhari Person";
+  form.querySelector('button[type="submit"]').textContent = "Add person";
+  $("#customerAmountField").classList.remove("hidden");
+  $("#cancelCustomerEdit").classList.add("hidden");
+}
+
+const cancelCustomerEditBtn = $("#cancelCustomerEdit");
+if (cancelCustomerEditBtn) {
+  cancelCustomerEditBtn.addEventListener("click", resetCustomerForm);
+}
+
 $("#customerForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = formData(event.currentTarget);
   data.extra_data = collectExtra("customer", event.currentTarget);
-  await api("/api/customers", data);
+  if (data.id) {
+    await api("/api/customers/update", data);
+  } else {
+    await api("/api/customers", data);
+  }
   closeModalInside(event.currentTarget);
-  event.currentTarget.reset();
-  toast("Person added.");
+  resetCustomerForm();
+  toast(data.id ? "Person updated." : "Person added.");
 });
 
 $("#customers").addEventListener("submit", async (event) => {
@@ -780,12 +836,38 @@ $("#settingsForm").addEventListener("submit", async (event) => {
 
 ["#checkoutForm", "#tableCheckoutForm"].forEach((selector) => {
   const form = $(selector);
-  form.elements.namedItem("payment_status").addEventListener("change", (event) => {
-    const reminder = form.elements.namedItem("reminder_at");
-    if (event.target.value === "udhari" && !reminder.value) {
-      reminder.value = defaultReminderValue();
+  if (!form) return;
+  const statusSelect = form.elements.namedItem("payment_status");
+  const methodSelect = form.elements.namedItem("payment_method");
+  const udhariFields = form.querySelector(".udhari-fields");
+  
+  statusSelect.addEventListener("change", (event) => {
+    const isUdhari = event.target.value === "udhari";
+    if (isUdhari) {
+      if (methodSelect) methodSelect.classList.add("hidden");
+      if (udhariFields) udhariFields.classList.remove("hidden");
+      const reminder = form.elements.namedItem("reminder_at");
+      if (reminder && !reminder.value) {
+        reminder.value = defaultReminderValue();
+      }
+    } else {
+      if (methodSelect) methodSelect.classList.remove("hidden");
+      if (udhariFields) udhariFields.classList.add("hidden");
     }
   });
+
+  const nameInput = form.elements.namedItem("customer_name");
+  const phoneInput = form.elements.namedItem("customer_phone");
+  if (nameInput && phoneInput) {
+    nameInput.addEventListener("input", (event) => {
+      const enteredName = event.target.value.trim().toLowerCase();
+      const customers = state.summary?.customers || [];
+      const match = customers.find(c => (c.name || "").toLowerCase() === enteredName);
+      if (match) {
+        phoneInput.value = match.phone || "";
+      }
+    });
+  }
 });
 
 function syncHeader() {

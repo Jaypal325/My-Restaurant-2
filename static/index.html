@@ -69,8 +69,11 @@
                 <option value="udhari">Udhari</option>
               </select>
               <select name="payment_method" id="calcMethod"></select>
-              <input name="customer_name" placeholder="Customer name for udhari" />
-              <input name="reminder_at" type="datetime-local" />
+              <div class="udhari-fields hidden" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                <input name="customer_name" list="customerList" placeholder="Customer Name" autocomplete="off" />
+                <input name="customer_phone" placeholder="Mobile Number" type="tel" />
+                <input name="reminder_at" type="datetime-local" />
+              </div>
               <button type="submit">Save bill</button>
             </form>
           </section>
@@ -134,8 +137,11 @@
                 <option value="udhari">Udhari</option>
               </select>
               <select name="payment_method" id="tableMethod"></select>
-              <input name="customer_name" placeholder="Customer name for udhari" />
-              <input name="reminder_at" type="datetime-local" />
+              <div class="udhari-fields hidden" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                <input name="customer_name" list="customerList" placeholder="Customer Name" autocomplete="off" />
+                <input name="customer_phone" placeholder="Mobile Number" type="tel" />
+                <input name="reminder_at" type="datetime-local" />
+              </div>
               <button type="submit">Close table bill</button>
             </form>
           </section>
@@ -227,16 +233,22 @@
     <dialog id="customerModal" class="modal">
       <form id="customerForm" class="stack-form modal-card">
         <div class="panel-head">
-          <h2>Add Udhari Person</h2>
+          <h2 id="customerModalTitle">Add Udhari Person</h2>
           <button class="icon-btn close-modal" type="button" aria-label="Close">x</button>
         </div>
+        <input name="id" type="hidden" />
         <input name="name" placeholder="Person name" required />
         <input name="phone" placeholder="Phone" />
-        <input name="amount" type="number" step="0.01" min="0" placeholder="Current udhari amount" />
+        <div id="customerAmountField" style="display: flex; flex-direction: column; width: 100%;">
+          <input name="amount" type="number" step="0.01" min="0" placeholder="Current udhari amount" />
+        </div>
         <input name="reminder_at" type="datetime-local" />
         <textarea name="notes" placeholder="Notes"></textarea>
         <div class="extra-fields" data-area="customer"></div>
-        <button type="submit">Add person</button>
+        <div style="display: flex; gap: 8px; width: 100%;">
+          <button type="submit" style="flex: 1;">Add person</button>
+          <button id="cancelCustomerEdit" class="ghost hidden" type="button" style="flex: 1;">Cancel edit</button>
+        </div>
       </form>
     </dialog>
 
@@ -313,6 +325,7 @@
     </dialog>
 
     <div id="toast" class="toast"></div>
+    <datalist id="customerList"></datalist>
     
     <div id="swipeCalculator" class="swipe-calculator">
       <div class="calc-panel">

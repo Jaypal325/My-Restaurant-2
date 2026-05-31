@@ -164,7 +164,10 @@ def ensure_customer(client, name, phone="", reminder_at=None, extra_data=None, u
         
         if existing.data:
             person = existing.data[0]
-            client.table('customers').update({'reminder_at': reminder_at}).eq('id', person['id']).execute()
+            update_data = {'reminder_at': reminder_at}
+            if phone:
+                update_data['phone'] = phone
+            client.table('customers').update(update_data).eq('id', person['id']).execute()
             return person['id']
         # Insert new customer
         response = client.table('customers').insert({
@@ -552,6 +555,7 @@ def create_sale():
         customer_id = data.get("customer_id")
         if data.get("payment_status") == "udhari":
             customer_id = ensure_customer(client, data.get("customer_name") or "Walk-in Customer",
+                                          phone=data.get("customer_phone", ""),
                                           reminder_at=data.get("reminder_at"), user_id=user_id)
         # Create sale
         sale_response = client.table('sales').insert({
@@ -625,6 +629,25 @@ def create_customer():
         return jsonify({"id": cid, "state": state})
     except Exception as e:
         print(f"[ERROR] create_customer: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/customers/update", methods=["POST"])
+def update_customer():
+    data = request.get_json() or {}
+    cid = int(data.get("id"))
+    try:
+        client = get_db()
+        user_id = session.get("user_id")
+        client.table('customers').update({
+            'name': data.get("name", "").strip(),
+            'phone': data.get("phone", ""),
+            'notes': data.get("notes", ""),
+            'reminder_at': data.get("reminder_at")
+        }).eq('id', cid).eq('user_id', user_id).execute()
+        state = build_state(client, user_id=user_id)
+        return jsonify({"state": state})
+    except Exception as e:
+        print(f"[ERROR] update_customer: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/udhari/payment", methods=["POST"])

@@ -165,8 +165,8 @@ def ensure_customer(db, name, phone="", reminder_at=None, extra_data=None):
         reminder_at = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M")
     person = db.execute("SELECT * FROM customers WHERE lower(name)=lower(?)", (name,)).fetchone()
     if person:
-        if reminder_at:
-            db.execute("UPDATE customers SET reminder_at=? WHERE id=?", (reminder_at, person["id"]))
+        if reminder_at or phone:
+            db.execute("UPDATE customers SET reminder_at=?, phone=COALESCE(NULLIF(?, ''), phone) WHERE id=?", (reminder_at, phone, person["id"]))
         return person["id"]
     cur = db.execute(
         "INSERT INTO customers(name, phone, reminder_at, extra_data, created_at) VALUES(?,?,?,?,?)",
@@ -258,6 +258,8 @@ class AppHandler(SimpleHTTPRequestHandler):
                     result = self.create_sale(db, data)
                 elif route == "/api/customers":
                     result = self.create_customer(db, data)
+                elif route == "/api/customers/update":
+                    result = self.update_customer(db, data)
                 elif route == "/api/udhari/payment":
                     result = self.create_udhari_payment(db, data)
                 elif route == "/api/stock":
@@ -344,13 +346,28 @@ class AppHandler(SimpleHTTPRequestHandler):
             )
         return {"id": customer_id, "state": self.get_state(db)}
 
+    def update_customer(self, db, data):
+        cid = int(data.get("id"))
+        db.execute(
+            "UPDATE customers SET name=?, phone=?, reminder_at=?, notes=?, extra_data=? WHERE id=?",
+            (
+                data.get("name", "").strip(),
+                data.get("phone", ""),
+                data.get("reminder_at"),
+                data.get("notes", ""),
+                json.dumps(data.get("extra_data") or {}),
+                cid,
+            ),
+        )
+        return {"state": self.get_state(db)}
+
     def create_sale(self, db, data):
         items = data.get("items") or []
         total = float(data.get("total") or sum(float(i.get("price", 0)) * float(i.get("qty", 1)) for i in items))
         customer_id = data.get("customer_id")
         if data.get("payment_status") == "udhari":
             customer_name = data.get("customer_name") or "Walk-in Customer"
-            customer_id = ensure_customer(db, customer_name, reminder_at=data.get("reminder_at"))
+            customer_id = ensure_customer(db, customer_name, phone=data.get("customer_phone", ""), reminder_at=data.get("reminder_at"))
         cur = db.execute(
             """
             INSERT INTO sales(source, table_id, customer_id, payment_status, payment_method, subtotal, total, items, extra_data, created_at)
