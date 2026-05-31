@@ -788,64 +788,18 @@ $("#settingsForm").addEventListener("submit", async (event) => {
   });
 });
 
-
-
-let headerFrame = null;
-let lastTopbarHeight = 0;
-let headerTransitioning = false;
-
-function updateTopbarHeight() {
-  const topbar = $("#topbar");
-  const h = Math.ceil(topbar.getBoundingClientRect().height);
-  if (h !== lastTopbarHeight) {
-    lastTopbarHeight = h;
-    document.documentElement.style.setProperty("--topbar-height", `${h}px`);
-  }
-}
-
 function syncHeader() {
   const topbar = $("#topbar");
-  const wasCompact = topbar.classList.contains("compact");
+  if (!topbar) return;
   if (window.scrollY > 20) {
     topbar.classList.add("compact");
   } else {
     topbar.classList.remove("compact");
   }
-  const isCompact = topbar.classList.contains("compact");
-  if (wasCompact !== isCompact) {
-    headerTransitioning = true;
-    trackTransition();
-  }
-  updateTopbarHeight();
 }
 
-/* Continuously track --topbar-height while the header transitions */
-function trackTransition() {
-  updateTopbarHeight();
-  if (headerTransitioning) {
-    requestAnimationFrame(trackTransition);
-  }
-}
-
-const topbarEl = $("#topbar");
-if (topbarEl) {
-  topbarEl.addEventListener("transitionend", () => {
-    headerTransitioning = false;
-    updateTopbarHeight();
-  });
-}
-
-function scheduleHeaderSync() {
-  if (headerFrame) return;
-  headerFrame = requestAnimationFrame(() => {
-    headerFrame = null;
-    syncHeader();
-  });
-}
-
-window.addEventListener("scroll", scheduleHeaderSync, { passive: true });
-window.addEventListener("resize", scheduleHeaderSync);
-new ResizeObserver(scheduleHeaderSync).observe($("#topbar"));
+window.addEventListener("scroll", syncHeader, { passive: true });
+window.addEventListener("resize", syncHeader);
 
 let drag = null;
 $("#floor").addEventListener("pointerdown", (event) => {
