@@ -823,7 +823,7 @@ main {
   .layout-shell { min-width: 0; }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .topbar {
     align-items: center;
     flex-direction: row;
