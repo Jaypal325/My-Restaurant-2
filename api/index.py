@@ -115,7 +115,7 @@ def query_rows(client, table, filters=None, order_by=None, limit_count=None, use
     query = client.table(table).select('*')
     
     # Always filter by user_id for multi-user tables (unless it's the users table itself)
-    if user_id and table != 'users' and table != 'settings':
+    if user_id and table != 'users':
         query = query.eq('user_id', user_id)
     
     if filters:
