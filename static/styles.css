@@ -11,7 +11,10 @@
   --shadow: 0 12px 28px rgba(32, 33, 36, 0.08);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
 
 body {
   margin: 0;
