@@ -385,25 +385,45 @@ main {
 
 /* Compact udhari pay form: note on top, amount+method+action on bottom row */
 .pay-form {
-  display: grid;
-  grid-template-columns: 1fr 110px 110px auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
 }
 
-.pay-form input[name="amount"],
+.pay-form input, 
 .pay-form select {
+  font-size: 13px;
+  padding: 6px 8px;
   min-height: 36px;
+}
+
+.pay-form input[name="note"] {
+  flex: 2 1 180px;
+  min-width: 0;
+}
+
+.pay-form input[name="amount"] {
+  flex: 1 1 90px;
+  min-width: 0;
+}
+
+.pay-form select {
+  flex: 1 1 100px;
+  min-width: 0;
+}
+
+.pay-form .pay-actions {
+  flex: 2 1 180px;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
 }
 
 .pay-form button {
   min-height: 36px;
   padding: 4px 10px;
   font-size: 13px;
-}
-
-.pay-form input, .pay-form select {
-  font-size: 13px;
-  padding: 6px 8px;
 }
 
 .table-editor {
@@ -880,14 +900,7 @@ main {
     grid-template-columns: 1fr;
   }
 
-  .pay-form {
-    grid-template-columns: 1fr 1fr;
-  }
 
-  .pay-form input[name="note"],
-  .pay-form .pay-actions {
-    grid-column: 1 / -1;
-  }
 
   .row-top {
     flex-direction: row;
