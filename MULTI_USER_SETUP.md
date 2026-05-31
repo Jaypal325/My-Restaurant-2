@@ -145,9 +145,15 @@ client.table('products').delete()\
 - Check that the migration ran successfully
 - Verify that `query_rows()` is being called with `user_id` parameter
 
-### Settings not saving per-user
-- Make sure the settings table migration included the unique index on `(user_id, key)`
-- Settings endpoint now requires user_id filter
+### Settings not saving per-user / Duplicate key violate settings_pkey
+- The settings table originally has `key` as its PRIMARY KEY (`settings_pkey`).
+- In multi-user setups, you must drop the single-column primary key constraint and create a composite primary key on `(user_id, key)`.
+- Make sure to run the updated [migrations.sql](migrations.sql) which drops the constraint and alters the settings table appropriately.
+
+### Duplicate key violate accounts_name_key
+- The accounts table originally has a global `UNIQUE (name)` constraint.
+- In multi-user setups, you must drop `accounts_name_key` and create a unique index/constraint per user on `(user_id, name)`.
+- The updated migration script handles this automatically.
 
 ## Next Steps (Optional Enhancements)
 
